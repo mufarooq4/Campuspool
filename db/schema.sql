@@ -1,5 +1,5 @@
 -- CampusPool schema
--- Run:  psql -U postgres -d campuspool -f db/schema.sql
+-- Run:  psql -U postgres -d CampusPool -f db/schema.sql
 
 DROP TABLE IF EXISTS rides;
 DROP TABLE IF EXISTS users;

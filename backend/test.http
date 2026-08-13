@@ -1,0 +1,36 @@
+### Sign up a new user
+POST http://localhost:3000/api/auth/signup
+Content-Type: application/json
+
+{
+  "name": "Test User",
+  "email": "test@campuspool.pk",
+  "phone": "+92 300 1112222",
+  "password": "test123"
+}
+
+### Log in with that user
+POST http://localhost:3000/api/auth/login
+Content-Type: application/json
+{
+  "email": "test@campuspool.pk",
+  "password": "test123"
+}
+
+### Log in with a seeded demo user
+POST http://localhost:3000/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "ayesha@campuspool.pk",
+  "password": "demo123"
+}
+
+### Wrong password — should fail
+POST http://localhost:3000/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "test@campuspool.pk",
+  "password": "WRONGPASS"
+}

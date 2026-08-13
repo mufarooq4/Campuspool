@@ -9,6 +9,25 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Middleware: verify the token, attach the user to req
+function requireAuth(req, res, next) {
+  const header = req.headers.authorization;
+
+  if (!header || !header.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Not logged in' });
+  }
+
+  const token = header.split(' ')[1];
+
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = payload;   // { id, is_admin } — now available to the route
+    next();               // valid → proceed to the actual route
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+}
+
 // GET /api/rides — public feed, soonest first
 app.get('/api/rides', async (req, res) => {
   try {
@@ -93,7 +112,7 @@ app.post('/api/auth/login', async (req, res) => {
     res.json({ token, user });
   } catch (err) {
     console.error('login failed:', err);
-    res.status(500).json({ error: 'Could not log in' });
+    res.status(500).json({ error: 'Could not log in' });    
   }
 });
 
