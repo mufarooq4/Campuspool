@@ -116,5 +116,25 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// GET /api/rides/mine — the logged-in user's own ads
+app.get('/api/rides/mine', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT r.id, r.origin, r.destination, r.depart_at,
+              r.seats_total, r.fare, r.driver_id,
+              u.name AS driver_name, u.phone
+       FROM rides r
+       JOIN users u ON u.id = r.driver_id
+       WHERE r.driver_id = $1
+       ORDER BY r.depart_at ASC`,
+      [req.user.id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('GET /api/rides/mine failed:', err);
+    res.status(500).json({ error: 'Could not fetch your rides' });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`API running on http://localhost:${PORT}`));
