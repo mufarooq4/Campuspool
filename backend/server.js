@@ -136,5 +136,59 @@ app.get('/api/rides/mine', requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/rides — publish a new ad (driver comes from the token)
+app.post('/api/rides', requireAuth, async (req, res) => {
+  const { origin, destination, depart_at, seats_total, fare } = req.body;
+
+  if (!origin || !destination || !depart_at || !seats_total) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO rides (driver_id, origin, destination, depart_at, seats_total, fare)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, driver_id, origin, destination, depart_at, seats_total, fare`,
+      [req.user.id, origin, destination, depart_at, seats_total, fare ?? 0]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('POST /api/rides failed:', err);
+    res.status(500).json({ error: 'Could not create ride' });
+  }
+});
+
+// DELETE /api/rides/:id — remove an ad (owner or admin only)
+app.delete('/api/rides/:id', requireAuth, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    let result;
+
+    if (req.user.is_admin) {
+      // Admin: delete any ride, no ownership condition
+      result = await pool.query(
+        'DELETE FROM rides WHERE id = $1',
+        [id]
+      );
+    } else {
+      // Regular user: delete only if they own it
+      result = await pool.query(
+        'DELETE FROM rides WHERE id = $1 AND driver_id = $2',
+        [id, req.user.id]
+      );
+    }
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Ride not found or not yours' });
+    }
+
+    res.json({ deleted: id });
+  } catch (err) {
+    console.error('DELETE /api/rides/:id failed:', err);
+    res.status(500).json({ error: 'Could not delete ride' });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`API running on http://localhost:${PORT}`));

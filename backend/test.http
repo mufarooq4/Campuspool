@@ -34,3 +34,35 @@ Content-Type: application/json
   "email": "test@campuspool.pk",
   "password": "WRONGPASS"
 }
+
+### my rides — needs a token
+GET http://localhost:3000/api/rides/mine
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY1MmMyMTlhLWMwYTctNGY5Mi1iMjg1LTkxNjE4Mzg2YjIwZSIsImlzX2FkbWluIjpmYWxzZSwiaWF0IjoxNzg2NjM4OTI4LCJleHAiOjE3ODcyNDM3Mjh9.eSSIYl2ii0eccGuwWRmaYg0SAnT6-3_bl_MN2tLlBOA
+
+### my rides — no token, should 401
+GET http://localhost:3000/api/rides/mine
+
+### post a ride — needs Ayesha's token
+POST http://localhost:3000/api/rides
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY1MmMyMTlhLWMwYTctNGY5Mi1iMjg1LTkxNjE4Mzg2YjIwZSIsImlzX2FkbWluIjpmYWxzZSwiaWF0IjoxNzg2NjM4OTI4LCJleHAiOjE3ODcyNDM3Mjh9.eSSIYl2ii0eccGuwWRmaYg0SAnT6-3_bl_MN2tLlBOA
+Content-Type: application/json
+
+{
+  "origin": "Saddar",
+  "destination": "NUST H-12",
+  "depart_at": "2026-08-20T08:00:00+05:00",
+  "seats_total": 3,
+  "fare": 150
+}
+
+### post with no token — should 401
+POST http://localhost:3000/api/rides
+Content-Type: application/json
+
+{
+  "origin": "Saddar",
+  "destination": "NUST H-12",
+  "depart_at": "2026-08-20T08:00:00+05:00",
+  "seats_total": 3,
+  "fare": 150
+}
