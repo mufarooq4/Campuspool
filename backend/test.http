@@ -12,6 +12,7 @@ Content-Type: application/json
 ### Log in with that user
 POST http://localhost:3000/api/auth/login
 Content-Type: application/json
+
 {
   "email": "test@campuspool.pk",
   "password": "test123"
@@ -29,7 +30,6 @@ Content-Type: application/json
 ### Wrong password — should fail
 POST http://localhost:3000/api/auth/login
 Content-Type: application/json
-
 {
   "email": "test@campuspool.pk",
   "password": "WRONGPASS"
@@ -37,7 +37,7 @@ Content-Type: application/json
 
 ### my rides — needs a token
 GET http://localhost:3000/api/rides/mine
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY1MmMyMTlhLWMwYTctNGY5Mi1iMjg1LTkxNjE4Mzg2YjIwZSIsImlzX2FkbWluIjpmYWxzZSwiaWF0IjoxNzg2NjM4OTI4LCJleHAiOjE3ODcyNDM3Mjh9.eSSIYl2ii0eccGuwWRmaYg0SAnT6-3_bl_MN2tLlBOA
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAwYzA2NWE0LThiNjgtNDg4OC1iNDgxLTgwMGU1ZTQyZGM3NiIsImlzX2FkbWluIjpmYWxzZSwiaWF0IjoxNzg2ODcwMTk1LCJleHAiOjE3ODc0NzQ5OTV9.FEccB7DonRH4qnRdxmEVZN9T2TWISCQrTJXxJK2zxi0
 
 ### my rides — no token, should 401
 GET http://localhost:3000/api/rides/mine
@@ -66,3 +66,72 @@ Content-Type: application/json
   "seats_total": 3,
   "fare": 150
 }
+
+### 1. No token — should 401
+DELETE http://localhost:3000/api/rides/PASTE_A_RIDE_ID
+
+### 2. Ayesha deletes HER OWN ride — should 200 { deleted }
+DELETE http://localhost:3000/api/rides/652c219a-c0a7-4f92-b285-91618386b20e
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY1MmMyMTlhLWMwYTctNGY5Mi1iMjg1LTkxNjE4Mzg2YjIwZSIsImlzX2FkbWluIjpmYWxzZSwiaWF0IjoxNzg2Nzc0NjE2LCJleHAiOjE3ODczNzk0MTZ9.fhiPcF7C77sKm7mBR6XRycUC_OnZAgZ5iAiNegcveiE
+
+### 3. Ayesha tries to delete SOMEONE ELSE'S ride — should 404
+DELETE http://localhost:3000/api/rides/2ebf92e3-e961-4f71-94b9-31c23954b902
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY1MmMyMTlhLWMwYTctNGY5Mi1iMjg1LTkxNjE4Mzg2YjIwZSIsImlzX2FkbWluIjpmYWxzZSwiaWF0IjoxNzg2ODcwMjQ5LCJleHAiOjE3ODc0NzUwNDl9.cwPWeVkqB1CN9y0yXBHs4uvnTCEdBBgpzXCZUEJwvpw
+
+### 4. Admin deletes that same someone-else's ride — should 200
+DELETE http://localhost:3000/api/rides/2ebf92e3-e961-4f71-94b9-31c23954b902
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImU3MThjNjI5LWI1MDktNGY1OS05M2M3LTM2MzY4NWU5ZTgxMiIsImlzX2FkbWluIjp0cnVlLCJpYXQiOjE3ODY4NzAyOTIsImV4cCI6MTc4NzQ3NTA5Mn0.uvEuDHQNA0zwCGYEwZlONmWeO2mAl5ZWGAQkGdPP018
+
+### login as Ayesha — copy the token
+POST http://localhost:3000/api/auth/login
+Content-Type: application/json
+
+{ "email": "ayesha@campuspool.pk", "password": "demo123" }
+
+### login as admin — copy the token
+POST http://localhost:3000/api/auth/login
+Content-Type: application/json
+
+{ "email": "admin@campuspool.pk", "password": "admin123" }
+
+### 1. No token — expect 401
+DELETE http://localhost:3000/api/rides/cd91b2e6-00c8-44eb-b1af-5099f8f9e60b
+
+### 2. Ayesha deletes HER OWN ride — expect 200 { deleted }
+DELETE http://localhost:3000/api/rides/cd91b2e6-00c8-44eb-b1af-5099f8f9e60b
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY1MmMyMTlhLWMwYTctNGY5Mi1iMjg1LTkxNjE4Mzg2YjIwZSIsImlzX2FkbWluIjpmYWxzZSwiaWF0IjoxNzg2ODY3MjkyLCJleHAiOjE3ODc0NzIwOTJ9.mDL-FAHg-cXB8rxQ2hcYr-QOqOlkKtXXiQrJIIMnQIY
+
+### 3. Ayesha deletes SOMEONE ELSE'S ride — expect 404
+DELETE http://localhost:3000/api/rides/NOT_AYESHA_RIDE_ID
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY1MmMyMTlhLWMwYTctNGY5Mi1iMjg1LTkxNjE4Mzg2YjIwZSIsImlzX2FkbWluIjpmYWxzZSwiaWF0IjoxNzg2ODY3MjkyLCJleHAiOjE3ODc0NzIwOTJ9.mDL-FAHg-cXB8rxQ2hcYr-QOqOlkKtXXiQrJIIMnQIY
+
+### 4. Admin deletes that same ride — expect 200 { deleted }
+DELETE http://localhost:3000/api/rides/NOT_AYESHA_RIDE_ID
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImU3MThjNjI5LWI1MDktNGY1OS05M2M3LTM2MzY4NWU5ZTgxMiIsImlzX2FkbWluIjp0cnVlLCJpYXQiOjE3ODY4NjczNDMsImV4cCI6MTc4NzQ3MjE0M30.CS9pA2un5wzNs4sjgyNaMihVKhD0YJNmNrWFjr3qByg
+
+
+
+### Publish a new ride
+POST http://localhost:3000/api/rides
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAwYzA2NWE0LThiNjgtNDg4OC1iNDgxLTgwMGU1ZTQyZGM3NiIsImlzX2FkbWluIjpmYWxzZSwiaWF0IjoxNzg2ODY3ODc3LCJleHAiOjE3ODc0NzI2Nzd9.yPHT9qhKjX1Ys3TSSwx11KD4h8pe2F-ij_CI5-bPldQ
+
+{
+  "origin": "F-11",
+  "destination": "Giki",
+  "depart_at": "2026-08-17 11:00:00", 
+  "seats_total": 4,
+  "fare": 1000
+}
+
+
+# POST http://localhost:3000/api/rides
+# Content-Type: application/json
+
+# {
+#   "Origin": "F-11",
+#   "destination": "Giki",
+#   "depart_at": "11am",
+#   "seats_total": "4",
+#   "fare": "1000"
+# }
