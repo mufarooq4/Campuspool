@@ -135,6 +135,22 @@ app.get('/api/rides/mine', requireAuth, async (req, res) => {
     res.status(500).json({ error: 'Could not fetch your rides' });
   }
 });
+// GET /api/me — who is the current token's user?
+app.get('/api/me', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, name, email, phone, is_admin FROM users WHERE id = $1`,
+      [req.user.id]
+    );
+    if (!result.rows[0]) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('GET /api/me failed:', err);
+    res.status(500).json({ error: 'Could not fetch user' });
+  }
+});
 
 // POST /api/rides — publish a new ad (driver comes from the token)
 app.post('/api/rides', requireAuth, async (req, res) => {

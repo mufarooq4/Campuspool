@@ -124,6 +124,17 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAwYzA2NWE0L
   "fare": 1000
 }
 
+### 1. No token — expect 401
+GET http://localhost:3000/api/admin/rides
+
+### 2. Ayesha (logged in, NOT admin) — expect 403
+GET http://localhost:3000/api/admin/rides
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY1MmMyMTlhLWMwYTctNGY5Mi1iMjg1LTkxNjE4Mzg2YjIwZSIsImlzX2FkbWluIjpmYWxzZSwiaWF0IjoxNzg2ODcwNzY2LCJleHAiOjE3ODc0NzU1NjZ9.zQpWhukCN-cGMZKxA4O46K8Itz1XL_9cm0Obm8-rFTo
+
+### 3. Admin — expect 200 with ALL rides
+GET http://localhost:3000/api/admin/rides
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImU3MThjNjI5LWI1MDktNGY1OS05M2M3LTM2MzY4NWU5ZTgxMiIsImlzX2FkbWluIjp0cnVlLCJpYXQiOjE3ODY4NzA3ODYsImV4cCI6MTc4NzQ3NTU4Nn0.2kHkChVh3XgeWzqoXB1WbFHQfYwNFauQ0pdDI4l4onI
+
 
 # POST http://localhost:3000/api/rides
 # Content-Type: application/json
