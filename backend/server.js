@@ -190,5 +190,27 @@ app.delete('/api/rides/:id', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/admin/rides — every ad (admin only)
+app.get('/api/admin/rides', requireAuth, async (req, res) => {
+  if (!req.user.is_admin) {
+    return res.status(403).json({ error: 'Admins only' });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT r.id, r.origin, r.destination, r.depart_at,
+              r.seats_total, r.fare, r.driver_id,
+              u.name AS driver_name, u.phone
+       FROM rides r
+       JOIN users u ON u.id = r.driver_id
+       ORDER BY r.depart_at ASC`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('GET /api/admin/rides failed:', err);
+    res.status(500).json({ error: 'Could not fetch rides' });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`API running on http://localhost:${PORT}`));
