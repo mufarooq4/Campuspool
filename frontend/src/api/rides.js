@@ -145,7 +145,7 @@ export async function logout() {
 }
 
 // --------------------------- Rides -----------------------------------------
-const API = 'http://localhost:3000/api';
+const API = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
 const TOKEN_KEY = 'campuspool_token';
 
