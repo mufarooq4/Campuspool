@@ -80,13 +80,9 @@ export async function getCurrentUser() {
   const token = getToken();
   if (!token) return null;              // no token → nobody's logged in
 
-  const res = await fetch(`${API}/me`, {
+  const res = await authedFetch(`${API}/me`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-
-  if (res.status === 401) {
-    setToken(null);
-  }
 
   if (!res.ok) {
     return null;
@@ -104,8 +100,14 @@ export async function login(email, password) {
   });
 
   if (!res.ok) {
-    const data = await res.json();
-    throw new Error(data.error || 'Login failed');
+    let message = 'Login failed';
+    try {
+      const data = await res.json();
+      if (data.error) message = data.error;
+    } catch {
+      // non-JSON error body — fall back to the default message
+    }
+    throw new Error(message);
   }
 
   const { token, user } = await res.json();
@@ -122,8 +124,14 @@ export async function signup({ name, email, phone, password }) {
   });
 
   if (!res.ok) {
-    const data = await res.json();
-    throw new Error(data.error || 'Signup failed');
+    let message = 'Signup failed';
+    try {
+      const data = await res.json();
+      if (data.error) message = data.error;
+    } catch {
+      // non-JSON error body — fall back to the default message
+    }
+    throw new Error(message);
   }
 
   const { token, user } = await res.json();
@@ -150,6 +158,25 @@ function setToken(token) {
   else localStorage.removeItem(TOKEN_KEY);
 }
 
+// Registered by the app shell so a 401 on any authenticated request can drop
+// the user back to a logged-out state immediately, not just on next reload.
+let onUnauthorized = null;
+
+export function setUnauthorizedHandler(handler) {
+  onUnauthorized = handler;
+}
+
+// fetch wrapper for authenticated requests: on a 401, clears the stored
+// token and notifies the app shell so it can reset to logged-out right away.
+async function authedFetch(url, options) {
+  const res = await fetch(url, options);
+  if (res.status === 401) {
+    setToken(null);
+    if (onUnauthorized) onUnauthorized();
+  }
+  return res;
+}
+
 // GET /api/rides  (public feed)
 export async function fetchRides() {
   // TODO backend: return fetch('/api/rides').then(r => r.json());
@@ -160,7 +187,7 @@ export async function fetchRides() {
 
 // GET /api/rides/mine  (current user's own ads)
 export async function fetchMyRides() {
-  const res = await fetch(`${API}/rides/mine`, {
+  const res = await authedFetch(`${API}/rides/mine`, {
     headers: { Authorization: `Bearer ${getToken()}` },
   });
   if (!res.ok) throw new Error('Failed to fetch your rides');
@@ -169,7 +196,7 @@ export async function fetchMyRides() {
 
 // GET /api/admin/rides  (admin: every ad)
 export async function fetchAllRides() {
-  const res = await fetch(`${API}/admin/rides`, {
+  const res = await authedFetch(`${API}/admin/rides`, {
     headers: { Authorization: `Bearer ${getToken()}` },
   });
   if (!res.ok) throw new Error('Failed to fetch all rides');
@@ -178,7 +205,7 @@ export async function fetchAllRides() {
 
 // POST /api/rides  (driver_name/phone come from the logged-in user server-side)
 export async function postAd(payload) {
-  const res = await fetch(`${API}/rides`, {
+  const res = await authedFetch(`${API}/rides`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -187,21 +214,33 @@ export async function postAd(payload) {
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    const data = await res.json();
-    throw new Error(data.error || 'Failed to post ad');
+    let message = 'Failed to post ad';
+    try {
+      const data = await res.json();
+      if (data.error) message = data.error;
+    } catch {
+      // non-JSON error body — fall back to the default message
+    }
+    throw new Error(message);
   }
   return res.json();
 }
 
 // DELETE /api/rides/:id
 export async function deleteRide(id) {
-  const res = await fetch(`${API}/rides/${id}`, {
+  const res = await authedFetch(`${API}/rides/${id}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${getToken()}` },
   });
   if (!res.ok) {
-    const data = await res.json();
-    throw new Error(data.error || 'Failed to delete ride');
+    let message = 'Failed to delete ride';
+    try {
+      const data = await res.json();
+      if (data.error) message = data.error;
+    } catch {
+      // non-JSON error body — fall back to the default message
+    }
+    throw new Error(message);
   }
   return res.json();
 }

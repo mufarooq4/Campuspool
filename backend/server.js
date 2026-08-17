@@ -1,13 +1,25 @@
 import express from 'express';
 import cors from 'cors';
-import 'dotenv/config';
+import rateLimit from 'express-rate-limit';
+import dotenv from 'dotenv';
+dotenv.config({ quiet: true });
 import { pool } from './db.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
 const app = express();
-app.use(cors());
+app.disable('x-powered-by');
+app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }));
 app.use(express.json());
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Please try again later.' },
+});
+app.use('/api/auth', authLimiter);
 
 // Middleware: verify the token, attach the user to req
 function requireAuth(req, res, next) {
@@ -49,16 +61,16 @@ app.get('/api/rides', async (req, res) => {
 
 // POST /api/auth/signup
 app.post('/api/auth/signup', async (req, res) => {
-  const { name, email, phone, password } = req.body;
-
-  if (!name || !email || !phone || !password) {
-    return res.status(400).json({ error: 'All fields are required' });
-  }
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters' });
-  }
-
   try {
+    const { name, email, phone, password } = req.body;
+
+    if (!name || !email || !phone || !password) {
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
     const password_hash = await bcrypt.hash(password, 10);
     const result = await pool.query(
       `INSERT INTO users (name, email, phone, password_hash)
@@ -85,13 +97,13 @@ app.post('/api/auth/signup', async (req, res) => {
 
 // POST /api/auth/login
 app.post('/api/auth/login', async (req, res) => {
-  const { email, password } = req.body;
-
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' });
-  }
-
   try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
     const result = await pool.query(
       `SELECT id, name, email, phone, is_admin, password_hash
        FROM users WHERE email = $1`,
@@ -154,13 +166,13 @@ app.get('/api/me', requireAuth, async (req, res) => {
 
 // POST /api/rides — publish a new ad (driver comes from the token)
 app.post('/api/rides', requireAuth, async (req, res) => {
-  const { origin, destination, depart_at, seats_total, fare } = req.body;
-
-  if (!origin || !destination || !depart_at || !seats_total) {
-    return res.status(400).json({ error: 'Missing required fields' });
-  }
-
   try {
+    const { origin, destination, depart_at, seats_total, fare } = req.body;
+
+    if (!origin || !destination || !depart_at || !seats_total) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
     const result = await pool.query(
       `INSERT INTO rides (driver_id, origin, destination, depart_at, seats_total, fare)
        VALUES ($1, $2, $3, $4, $5, $6)

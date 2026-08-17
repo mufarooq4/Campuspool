@@ -7,11 +7,19 @@ const CURRENCY = 'Rs.';
 function AdRow({ ride, onDeleted }) {
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState('');
 
   async function handleConfirmDelete() {
     setDeleting(true);
-    await deleteRide(ride.id);
-    onDeleted(ride.id);
+    setError('');
+    try {
+      await deleteRide(ride.id);
+      onDeleted(ride.id);
+    } catch (err) {
+      setError(err.message || 'Could not delete this ad. Please try again.');
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
@@ -38,6 +46,7 @@ function AdRow({ ride, onDeleted }) {
       ) : (
         <div className="flex flex-none flex-col items-end gap-1.5">
           <span className="text-xs font-semibold text-red-700">Delete permanently?</span>
+          {error && <span className="text-xs font-semibold text-red-700">{error}</span>}
           <div className="flex gap-1.5">
             <button
               type="button"
@@ -64,15 +73,23 @@ function AdRow({ ride, onDeleted }) {
 export default function MyAdsView() {
   const [rides, setRides] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
-    fetchMyRides().then((data) => {
-      if (!cancelled) {
-        setRides(data);
-        setLoading(false);
-      }
-    });
+    fetchMyRides()
+      .then((data) => {
+        if (!cancelled) {
+          setRides(data);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setError('Could not load your ads. Please try again.');
+          setLoading(false);
+        }
+      });
     return () => {
       cancelled = true;
     };
@@ -91,13 +108,19 @@ export default function MyAdsView() {
         </div>
       )}
 
-      {!loading && rides.length === 0 && (
+      {!loading && error && (
+        <div className="rounded-2xl border border-dashed border-red-300 bg-red-50 p-10 text-center text-sm text-red-500">
+          {error}
+        </div>
+      )}
+
+      {!loading && !error && rides.length === 0 && (
         <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-10 text-center text-sm text-stone-400">
           You haven't posted any ads yet.
         </div>
       )}
 
-      {!loading && rides.length > 0 && (
+      {!loading && !error && rides.length > 0 && (
         <div className="flex flex-col gap-2.5">
           {rides.map((r) => (
             <AdRow key={r.id} ride={r} onDeleted={(id) => setRides((prev) => prev.filter((x) => x.id !== id))} />

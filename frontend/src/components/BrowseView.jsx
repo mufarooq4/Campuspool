@@ -7,15 +7,23 @@ export default function BrowseView() {
   const [rides, setRides] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
-    fetchRides().then((data) => {
-      if (!cancelled) {
-        setRides(data);
-        setLoading(false);
-      }
-    });
+    fetchRides()
+      .then((data) => {
+        if (!cancelled) {
+          setRides(data);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setError('Could not load rides. Please try again.');
+          setLoading(false);
+        }
+      });
     return () => {
       cancelled = true;
     };
@@ -40,13 +48,19 @@ export default function BrowseView() {
         </div>
       )}
 
-      {!loading && rides.length === 0 && (
+      {!loading && error && (
+        <div className="rounded-2xl border border-dashed border-red-300 bg-red-50 p-10 text-center text-sm text-red-500">
+          {error}
+        </div>
+      )}
+
+      {!loading && !error && rides.length === 0 && (
         <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-10 text-center text-sm text-stone-400">
           No rides posted yet — check back soon.
         </div>
       )}
 
-      {!loading && rides.length > 0 && (
+      {!loading && !error && rides.length > 0 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {rides.map((ride) => (
             <RideCard key={ride.id} ride={ride} onOpen={() => setSelected(ride)} />

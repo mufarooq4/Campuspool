@@ -9,7 +9,7 @@ import LoginView from './components/LoginView';
 import SignupView from './components/SignupView';
 import MyAdsView from './components/MyAdsView';
 import AdminView from './components/AdminView';
-import { getCurrentUser, logout } from './api/rides';
+import { getCurrentUser, logout, setUnauthorizedHandler } from './api/rides';
 
 export default function CampusPoolDashboard() {
   const [view, setView] = useState('browse');
@@ -20,10 +20,15 @@ export default function CampusPoolDashboard() {
   const toastTimer = useRef(null);
 
   useEffect(() => {
-    getCurrentUser().then((u) => {
-      setUser(u);
-      setAuthLoading(false);
-    });
+    getCurrentUser()
+      .then((u) => setUser(u))
+      .catch(() => showToast('Could not verify your session. Please try logging in again.'))
+      .finally(() => setAuthLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => setUser(null));
   }, []);
 
   const showToast = useCallback((message) => {
