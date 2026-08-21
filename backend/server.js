@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import helmet from 'helmet';
+//import helmet from 'helmet';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import dotenv from 'dotenv';
 dotenv.config({ quiet: true });
@@ -34,7 +34,7 @@ const DUMMY_HASH = '$2b$12$C6UzMDM.H6dfI/f/IKcEe.7Kk8bHqXn3vJ8lqOxvJZ2mYwF1nD3Bu
 
 const app = express();
 app.disable('x-powered-by');
-app.use(helmet());
+//app.use(helmet());
 
 // Railway/Vercel put exactly one proxy in front. Never use `true` — a client
 // can forge X-Forwarded-For and mint unlimited rate-limit keys.
