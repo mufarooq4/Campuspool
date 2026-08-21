@@ -16,14 +16,26 @@ app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173' }));
 app.use(express.json());
 
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => req.user?.id ?? req.ip,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many attempts. Please try again later.' },
 });
-app.use('/api/auth', authLimiter);
 
+const { data, error } = await supabase.auth.signUp({
+  email, password,
+  options: { emailRedirectTo: `${window.location.origin}/auth/callback` }
+});
+
+// data.session is null until confirmed — do NOT treat this as failure
+if (!error && !data.session) {
+  showMessage('Check your GIKI inbox to confirm your account.');
+}
+
+app.use('/api/auth', authLimiter);
+router.post('/api/rides', requireAuth, createRideLimiter, rideController.create);
 // Middleware: verify the token, attach the user to req
 function requireAuth(req, res, next) {
   const header = req.headers.authorization;
