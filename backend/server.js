@@ -1,12 +1,12 @@
 import express from 'express';
 import cors from 'cors';
-//import helmet from 'helmet';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import dotenv from 'dotenv';
 dotenv.config({ quiet: true });
 import { pool } from './db.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import { randomBytes, createHash } from 'crypto';
 
 /* ------------------------------------------------------------------ *
  * Boot-time config validation — fail fast, never start half-configured
@@ -28,13 +28,24 @@ const BCRYPT_ROUNDS = 12;
 const TOKEN_TTL = '2h';
 const CAMPUS_EMAIL = /@(?:s\.)?giki\.edu\.pk$/i;
 
+// Email config. No SDK — Resend's REST API over global fetch, so this adds
+// ZERO npm dependencies. If RESEND_API_KEY is unset, verification links are
+// printed to the Railway console instead of sent, which keeps development
+// working before DNS is set up.
+const RESEND_API_KEY = process.env.RESEND_API_KEY || null;
+const MAIL_FROM = process.env.MAIL_FROM || 'CampusPool <onboarding@resend.dev>';
+const SITE_URL = process.env.SITE_URL || 'http://localhost:5173';
+
+// Leave this OFF until Resend + DNS are working, or you will lock yourself
+// out of posting rides. Flip to 'true' before beta.
+const REQUIRE_VERIFIED = process.env.REQUIRE_EMAIL_VERIFICATION === 'true';
+
 // Constant-time-ish login: compare against a real hash when the user is absent,
 // so response timing does not reveal whether an email is registered.
 const DUMMY_HASH = '$2b$12$C6UzMDM.H6dfI/f/IKcEe.7Kk8bHqXn3vJ8lqOxvJZ2mYwF1nD3Bu';
 
 const app = express();
 app.disable('x-powered-by');
-//app.use(helmet());
 
 // Railway/Vercel put exactly one proxy in front. Never use `true` — a client
 // can forge X-Forwarded-For and mint unlimited rate-limit keys.
@@ -80,6 +91,16 @@ const signupLimiter = rateLimit({
   message: { error: 'Too many accounts created from this network.' },
 });
 
+// Resend is an email-bombing vector if left open. Tighter than anything else.
+const resendLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: byUserOrIp,
+  message: { error: 'Too many verification emails requested. Try again later.' },
+});
+
 // THE missing control. This endpoint had no limiter, which is how 3,650
 // junk rides landed in one 20-minute window.
 const createRideLimiter = rateLimit({
@@ -113,6 +134,54 @@ class AppError extends Error {
 }
 
 /* ------------------------------------------------------------------ *
+ * Email verification
+ * ------------------------------------------------------------------ */
+const sha256 = (s) => createHash('sha256').update(s).digest();
+
+async function sendMail({ to, subject, html }) {
+  if (!RESEND_API_KEY) {
+    console.warn(`[mail:disabled] would send to ${to} — ${subject}`);
+    console.warn(html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+    return;
+  }
+
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ from: MAIL_FROM, to, subject, html }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Resend responded ${res.status}: ${await res.text()}`);
+  }
+}
+
+async function issueVerification(user) {
+  // The raw token goes in the email; only its hash is stored. If the database
+  // leaks, stored hashes cannot be replayed to confirm accounts.
+  const token = randomBytes(32).toString('base64url');
+
+  await pool.query(
+    `INSERT INTO email_tokens (token_hash, user_id, expires_at)
+     VALUES ($1, $2, now() + interval '24 hours')`,
+    [sha256(token), user.id]
+  );
+
+  const link = `${SITE_URL}/verify?token=${token}`;
+  await sendMail({
+    to: user.email,
+    subject: 'Confirm your CampusPool account',
+    html: `<p>Hi ${user.name},</p>
+           <p>Confirm your email to start posting rides on CampusPool:</p>
+           <p><a href="${link}">Confirm my email</a></p>
+           <p>This link expires in 24 hours. If you did not sign up, ignore this message.</p>`,
+  });
+}
+
+/* ------------------------------------------------------------------ *
  * Auth middleware
  * ------------------------------------------------------------------ */
 function requireAuth(req, res, next) {
@@ -142,6 +211,27 @@ async function requireAdmin(req, res, next) {
       return res.status(403).json({ error: 'Admins only' });
     }
     req.user.is_admin = true;
+    return next();
+  } catch (err) {
+    return next(err);
+  }
+}
+
+// Gate on ride creation, not on login. Unverified users can still browse —
+// friction at the wrong moment kills signups.
+async function requireVerified(req, res, next) {
+  if (!REQUIRE_VERIFIED) return next();
+  try {
+    const { rows } = await pool.query(
+      'SELECT email_verified_at FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    if (!rows[0]?.email_verified_at) {
+      return res.status(403).json({
+        error: 'Confirm your GIKI email before posting a ride',
+        code: 'EMAIL_UNVERIFIED',
+      });
+    }
     return next();
   } catch (err) {
     return next(err);
@@ -233,7 +323,11 @@ function validateRide(body) {
 app.get('/health', async (_req, res) => {
   try {
     await pool.query('SELECT 1');
-    res.json({ ok: true });
+    res.json({
+      ok: true,
+      mail: RESEND_API_KEY ? 'live' : 'console',
+      verificationRequired: REQUIRE_VERIFIED,
+    });
   } catch {
     res.status(503).json({ ok: false });
   }
@@ -250,13 +344,24 @@ app.post('/api/auth/signup', signupLimiter, async (req, res, next) => {
     const { rows } = await pool.query(
       `INSERT INTO users (name, email, phone, password_hash)
        VALUES ($1, $2, $3, $4)
-       RETURNING id, name, email, phone, is_admin`,
+       RETURNING id, name, email, phone, is_admin, email_verified_at`,
       [name, email, phone, password_hash]
     );
 
     const user = rows[0];
+
+    // Fire-and-forget: a mail outage must not fail an otherwise valid signup.
+    // The account exists either way; the user can request a resend.
+    issueVerification(user).catch((err) =>
+      console.error('verification email failed:', err.message)
+    );
+
     const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: TOKEN_TTL });
-    res.status(201).json({ token, user });
+    res.status(201).json({
+      token,
+      user,
+      message: 'Check your GIKI inbox to confirm your email.',
+    });
   } catch (err) {
     if (err.code === '23505') {
       // Deliberately vague: naming the field would confirm which of email or
@@ -275,7 +380,8 @@ app.post('/api/auth/login', async (req, res, next) => {
     }
 
     const { rows } = await pool.query(
-      `SELECT id, name, email, phone, is_admin, password_hash
+      `SELECT id, name, email, phone, is_admin, email_verified_at,
+              disabled_at, password_hash
        FROM users WHERE email = $1`,
       [String(email).trim().toLowerCase()]
     );
@@ -286,10 +392,70 @@ app.post('/api/auth/login', async (req, res, next) => {
     if (!user || !ok) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
+    if (user.disabled_at) {
+      return res.status(403).json({ error: 'This account has been disabled' });
+    }
 
     delete user.password_hash;
+    delete user.disabled_at;
     const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: TOKEN_TTL });
     res.json({ token, user });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Confirm an email address. The UPDATE ... WHERE used_at IS NULL ... RETURNING
+// is one atomic statement: the validity check and the token consumption happen
+// together, so two simultaneous requests cannot both succeed.
+app.post('/api/auth/verify', async (req, res, next) => {
+  try {
+    const { token } = req.body ?? {};
+    if (!token || typeof token !== 'string') {
+      throw new AppError('Token required', 400);
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE email_tokens
+          SET used_at = now()
+        WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()
+        RETURNING user_id`,
+      [sha256(token)]
+    );
+    if (!rows[0]) throw new AppError('That link is invalid or has expired', 400);
+
+    await pool.query(
+      `UPDATE users SET email_verified_at = now()
+        WHERE id = $1 AND email_verified_at IS NULL`,
+      [rows[0].user_id]
+    );
+
+    res.json({ verified: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post('/api/auth/resend', requireAuth, resendLimiter, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, name, email, email_verified_at FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const user = rows[0];
+    if (!user) throw new AppError('User not found', 404);
+    if (user.email_verified_at) {
+      return res.json({ message: 'Your email is already confirmed.' });
+    }
+
+    // Invalidate outstanding tokens so only the newest link works.
+    await pool.query(
+      'UPDATE email_tokens SET used_at = now() WHERE user_id = $1 AND used_at IS NULL',
+      [user.id]
+    );
+
+    await issueVerification(user);
+    res.json({ message: 'Verification email sent.' });
   } catch (err) {
     next(err);
   }
@@ -298,7 +464,7 @@ app.post('/api/auth/login', async (req, res, next) => {
 app.get('/api/me', requireAuth, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      'SELECT id, name, email, phone, is_admin FROM users WHERE id = $1',
+      'SELECT id, name, email, phone, is_admin, email_verified_at FROM users WHERE id = $1',
       [req.user.id]
     );
     if (!rows[0]) throw new AppError('User not found', 404);
@@ -312,8 +478,8 @@ app.get('/api/me', requireAuth, async (req, res, next) => {
  * Rides
  * ------------------------------------------------------------------ */
 
-// Feed now requires auth and does NOT return phone numbers. Previously this
-// was an unauthenticated endpoint dumping every user's mobile number.
+// Public feed — anyone can browse. Note there is no `phone` column here:
+// listings are open, contact details are gated behind /contact below.
 app.get('/api/rides', readLimiter, async (req, res, next) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 50, 100);
@@ -325,7 +491,7 @@ app.get('/api/rides', readLimiter, async (req, res, next) => {
               u.name AS driver_name
        FROM rides r
        JOIN users u ON u.id = r.driver_id
-       WHERE r.depart_at > now()
+       WHERE r.depart_at > now() AND r.cancelled_at IS NULL
        ORDER BY r.depart_at ASC
        LIMIT $1 OFFSET $2`,
       [limit, offset]
@@ -344,7 +510,7 @@ app.get('/api/rides/:id/contact', requireAuth, readLimiter, async (req, res, nex
     const { rows } = await pool.query(
       `SELECT u.name, u.phone
        FROM rides r JOIN users u ON u.id = r.driver_id
-       WHERE r.id = $1 AND r.depart_at > now()`,
+       WHERE r.id = $1 AND r.depart_at > now() AND r.cancelled_at IS NULL`,
       [req.params.id]
     );
     if (!rows[0]) throw new AppError('Ride not found', 404);
@@ -367,7 +533,7 @@ app.get('/api/rides/mine', requireAuth, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT r.id, r.origin, r.destination, r.depart_at,
-              r.seats_total, r.fare, r.driver_id
+              r.seats_total, r.fare, r.driver_id, r.cancelled_at
        FROM rides r
        WHERE r.driver_id = $1
        ORDER BY r.depart_at ASC`,
@@ -379,7 +545,7 @@ app.get('/api/rides/mine', requireAuth, async (req, res, next) => {
   }
 });
 
-app.post('/api/rides', requireAuth, createRideLimiter, async (req, res, next) => {
+app.post('/api/rides', requireAuth, requireVerified, createRideLimiter, async (req, res, next) => {
   try {
     const ride = validateRide(req.body);
 
@@ -481,10 +647,22 @@ app.use((err, _req, res, _next) => {
 });
 
 /* ------------------------------------------------------------------ *
+ * Housekeeping — clear long-expired tokens hourly.
+ * .unref() so the timer never blocks a graceful shutdown.
+ * ------------------------------------------------------------------ */
+setInterval(() => {
+  pool
+    .query(`DELETE FROM email_tokens WHERE expires_at < now() - interval '7 days'`)
+    .catch((err) => console.error('token cleanup failed:', err.message));
+}, 60 * 60 * 1000).unref();
+
+/* ------------------------------------------------------------------ *
  * Start + graceful shutdown
  * ------------------------------------------------------------------ */
 const PORT = process.env.PORT || 3000;
-const server = app.listen(PORT, () => console.log(`API running on port ${PORT}`));
+const server = app.listen(PORT, () =>
+  console.log(`API running on port ${PORT} — mail: ${RESEND_API_KEY ? 'live' : 'console'}`)
+);
 
 for (const signal of ['SIGTERM', 'SIGINT']) {
   process.on(signal, () => {
