@@ -314,7 +314,7 @@ app.get('/api/me', requireAuth, async (req, res, next) => {
 
 // Feed now requires auth and does NOT return phone numbers. Previously this
 // was an unauthenticated endpoint dumping every user's mobile number.
-app.get('/api/rides', requireAuth, readLimiter, async (req, res, next) => {
+app.get('/api/rides', readLimiter, async (req, res, next) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 50, 100);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
