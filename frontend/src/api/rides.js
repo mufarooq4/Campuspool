@@ -62,15 +62,24 @@ export function formatDepart(isoString) {
   return `${dayLabel} · ${time}`;
 }
 
+function normalizePhone(phone) {
+  let digits = (phone || '').replace(/[^\d]/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('0')) digits = '92' + digits.slice(1);   // 0300... → 92300...
+  else if (digits.startsWith('3')) digits = '92' + digits;        // 300...  → 92300...
+  return digits;                                                  // 92300... left as-is
+}
+
+
 export function waLink(phone) {
-  const digits = (phone || '').replace(/[^\d]/g, '');
+  const digits = normalizePhone(phone);
   if (!digits) return '#';
   return `https://wa.me/${digits}?text=${encodeURIComponent('Hi, I saw your ride on CampusPool')}`;
 }
 
 export function callLink(phone) {
-  const digits = (phone || '').replace(/[^\d+]/g, '');
-  return digits ? `tel:${digits}` : '#';
+  const digits = normalizePhone(phone);
+  return digits ? `tel:+${digits}` : '#';
 }
 
 // ---------------------------- Auth ----------------------------------------

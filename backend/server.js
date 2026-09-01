@@ -8,6 +8,15 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { randomBytes, createHash } from 'crypto';
 
+function normalizePhone(phone) {
+  let digits = (phone || '').replace(/[^\d]/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('0')) digits = '92' + digits.slice(1);
+  else if (digits.startsWith('3')) digits = '92' + digits;
+  return digits;
+}
+
+
 /* ------------------------------------------------------------------ *
  * Boot-time config validation — fail fast, never start half-configured
  * ------------------------------------------------------------------ */
@@ -488,7 +497,7 @@ app.get('/api/rides', readLimiter, async (req, res, next) => {
     const { rows } = await pool.query(
       `SELECT r.id, r.origin, r.destination, r.depart_at,
               r.seats_total, r.fare, r.driver_id,
-              u.name AS driver_name
+               u.name AS driver_name, u.phone
        FROM rides r
        JOIN users u ON u.id = r.driver_id
        WHERE r.depart_at > now() AND r.cancelled_at IS NULL
